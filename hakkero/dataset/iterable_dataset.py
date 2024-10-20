@@ -19,6 +19,7 @@ from bitarray.util import serialize
 from tabulate import tabulate
 
 from hakkero.dataset.indexed_dataset import IndexedDataset
+from hakkero.dataset.logger import logger
 from hakkero.dataset.utils import Range
 
 
@@ -438,12 +439,12 @@ class IterableDataset(IndexedDataset, torch.utils.data.IterableDataset):
         r = r.sub_range(split=self.rank, n_splits=self.world_size)  # split index among multi-gpu workers
         r = r.sub_range(split=worker_id, n_splits=n_workers)  # split index among multiprocess dataloader workers
 
+        logger.debug(
+            f"world_size: {self.world_size}, rank: {self.rank}, n_workers: {n_workers}, worker_id: {worker_id}, r={r.list()}"
+        )
+
         if self.seed >= 0:
-            blocks = (
-                (epoch, bid)
-                for epoch in itertools.count(self.state.epoch)
-                for bid in r.random_iterate()
-            )
+            blocks = ((epoch, bid) for epoch in itertools.count(self.state.epoch) for bid in r.random_iterate())
             self.random = random.Random(self.seed)
         else:
             blocks = ((epoch, bid) for epoch in itertools.count(self.state.epoch) for bid in r.iterate())

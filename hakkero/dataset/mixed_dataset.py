@@ -19,7 +19,7 @@ class DummyDataset(torch.utils.data.Dataset):
         return 0
 
     def __len__(self):
-        return 10000
+        return 100000
 
 
 class MixedDataset(torch.utils.data.IterableDataset):

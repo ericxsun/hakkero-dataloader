@@ -30,7 +30,7 @@ def legacy(data, tokenizer, **kwargs):
     if target:
         if ids[-1] == tokenizer.eos_token_id:
             ids.pop()
-        label.extend([IGNORE_INDEX] * len(ids))
+        label.extend([IGNORE_INDEX for _ in ids])
 
         ids = tokenizer.encode(target, max_length=int(1e12), truncation=True)
         if ids[0] == tokenizer.bos_token_id:
@@ -152,7 +152,7 @@ def role_message(messages, tokenizer, template):
     assert messages[-2]["role"] == "user", "messages[-2]['role'] should be 'user'"
 
     assistant_start_ids = tokenizer.encode(
-        template["assistant_start"], add_special_tokens=False, max_length=int(1e12), trucation=True
+        template["assistant_start"], add_special_tokens=False, max_length=int(1e12), truncation=True
     )
 
     input, label, context = [], [], None
@@ -164,16 +164,16 @@ def role_message(messages, tokenizer, template):
             # only tokenize and append context right before assistant message
             # context after assistant message is not useful
             context = template["join"].join([context, template["assistant_start"]])
-            ids = tokenizer.encode(context, add_special_tokens=False, max_length=int(1e12), trucation=True)
+            ids = tokenizer.encode(context, add_special_tokens=False, max_length=int(1e12), truncation=True)
             input.extend(ids)
 
-            label.extend([IGNORE_INDEX] * len(ids))
+            label.extend([IGNORE_INDEX for _ in ids])
 
             ids = tokenizer.encode(
                 template["assistant_start"] + message["content"] + template["assistant_end"],
                 add_special_tokens=False,
                 max_length=int(1e12),
-                trucation=True,
+                truncation=True,
             )
 
             # a hack to avoid prepending space in the assistant response
@@ -199,7 +199,7 @@ def chatml_message(messages, tokenizer):
 def role_preference(data, tokenizer, template):
     assert data["context"][-1]["role"] != "assistant"
     assistant_start_ids = tokenizer.encode(
-        template["assistant_start"], add_special_tokens=False, max_length=int(1e12), trucation=True
+        template["assistant_start"], add_special_tokens=False, max_length=int(1e12), truncation=True
     )
     inputs = dict(chosen=[], rejected=[])
     labels = dict(chosen=[], rejected=[])
@@ -208,7 +208,7 @@ def role_preference(data, tokenizer, template):
         [template[message["role"]].format(message["content"]) for message in data["context"]]
         + [template["assistant_start"]]
     )
-    context_ids = tokenizer.encode(context, add_special_tokens=False, max_length=int(1e12), trucation=True)
+    context_ids = tokenizer.encode(context, add_special_tokens=False, max_length=int(1e12), truncation=True)
 
     for key in ("chosen", "rejected"):
         inputs[key].extend(context_ids)
@@ -217,7 +217,7 @@ def role_preference(data, tokenizer, template):
             template["assistant_start"] + data[key] + template["assistant_end"],
             add_special_tokens=False,
             max_length=int(1e12),
-            trucation=True,
+            truncation=True,
         )
         assert response_ids_with_prefix[: len(assistant_start_ids)] == assistant_start_ids
         response_ids = response_ids_with_prefix[len(assistant_start_ids) :]
