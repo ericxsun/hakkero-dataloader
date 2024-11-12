@@ -13,9 +13,9 @@ import h5py
 
 from hakkero import __version__
 from hakkero.dataset.logger import logger
-from hakkero.dataset.tokenization import check_legacy
-from hakkero.dataset.tokenization import check_message
-from hakkero.dataset.tokenization import check_preference
+from hakkero.dataset.strategy.check import check_legacy
+from hakkero.dataset.strategy.check import check_message
+from hakkero.dataset.strategy.check import check_preference
 
 
 def _build_chunk_offsets(filename, start, end, worker_id, n_workers):
@@ -41,7 +41,11 @@ def _build_chunk_offsets(filename, start, end, worker_id, n_workers):
                 _ = js["uid"]
                 data = js["data"]
 
-                if check_legacy(data) or check_message(data) or check_preference(data):
+                valid_legacy, _ = check_legacy(data)
+                valid_message, _ = check_message(data)
+                valid_preference, _ = check_preference(data)
+
+                if valid_legacy or valid_message or valid_preference:
                     continue
                 else:
                     logger.error(f"invalid format line: {line}")

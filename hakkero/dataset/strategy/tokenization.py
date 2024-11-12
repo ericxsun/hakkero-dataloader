@@ -3,52 +3,14 @@
 #
 
 import torch
-from hakkero.dataset.errors import TokenizationError
-from hakkero.dataset.utils import IGNORE_INDEX, process_messages
-from hakkero.dataset.utils import message_trans
 
-def check_legacy(data):
-    if not isinstance(data, dict):
-        return False
-
-    if any(s not in data for s in ("title", "summary", "abstract", "text", "question", "answer", "code")):
-        return False
-
-    return True
-
-
-def check_message(data):
-    if not isinstance(data, list):
-        return False
-
-    if not all(isinstance(d, dict) for d in data):
-        return False
-
-    if data[-1]["role"] != "assistant":
-        return False
-
-    if data[-2]["role"] != "user":
-        return False
-
-    return True
-
-
-def check_preference(data):
-    if not isinstance(data, dict):
-        return False
-
-    if "context" not in data or "chosen" not in data or "rejected" not in data:
-        return False
-
-    if not isinstance(data["chosen"], str) or not isinstance(data["rejected"], str):
-        return False
-
-    return check_message(data["context"])
+from hakkero.dataset.image import process_messages
+from hakkero.dataset.image import translate_messages
+from hakkero.dataset.strategy.errors import TokenizationError
+from hakkero.dataset.utils import IGNORE_INDEX
 
 
 def legacy(data, tokenizer, **kwargs):
-    assert isinstance(data, dict), "wrong data format, expect {key: value}, " + f"but got {data}"
-
     context = "\n\n".join(
         [
             data[s].strip()
@@ -100,13 +62,8 @@ def legacy(data, tokenizer, **kwargs):
 
 # ----------------------------------------------------------------------------------------------------------------------
 # messages = [{"role": "user", "content": xxx}, {"role": "assistant", "content": xxx}, ...]
-def huggingface_message(messages, tokenizer, processor, **kwargs):
-    if not isinstance(messages, list) or not isinstance(messages[0], dict):
-        raise ValueError("messages should be [{'role': 'xxx', 'content': 'xxx'}, ...]," + f" but got {messages}")
-
+def huggingface_message(messages, tokenizer, **kwargs):
     assert hasattr(tokenizer, "apply_chat_template"), "tokenizer should have apply_chat_template"
-    assert messages[-1]["role"] == "assistant", "messages[-1]['role'] should be 'assistant'"
-    assert messages[-2]["role"] == "user", "messages[-2]['role'] should be 'user'"
 
     assert tokenizer.apply_chat_template(
         [{"role": "user", "content": "test"}], add_generation_prompt=True
@@ -132,9 +89,8 @@ def huggingface_message(messages, tokenizer, processor, **kwargs):
 #   "chosen": "xx",
 #   "rejected": "xx"
 # }
-def huggingface_preference(data, tokenizer, processor, **kwargs):
+def huggingface_preference(data, tokenizer, **kwargs):
     assert hasattr(tokenizer, "apply_chat_template")
-    assert data["context"][-1]["role"] == "user", "data['context'][-1]['role'] should be 'user'"
 
     assert tokenizer.apply_chat_template(
         [{"role": "user", "content": "test"}], add_generation_prompt=True
@@ -182,18 +138,12 @@ chatml_role = {
 
 
 # messages = [{"role": "user", "content": xxx}, {"role": "assistant", "content": xxx}, ...]
-def role_message(messages, tokenizer, template):
-    if not isinstance(messages, list) or not isinstance(messages[0], dict):
-        raise ValueError("messages should be [{'role': 'xxx', 'content': 'xxx'}, ...]," + f" but got {messages}")
-
-    assert messages[-1]["role"] == "assistant", "messages[-1]['role'] should be 'assistant'"
-    assert messages[-2]["role"] == "user", "messages[-2]['role'] should be 'user'"
-
+def role_message(messages, tokenizer, template, context=None):
     assistant_start_ids = tokenizer.encode(
         template["assistant_start"], add_special_tokens=False, max_length=int(1e12), truncation=True
     )
 
-    input, label, context = [], [], None
+    input, label, context = [], [], context
     for i, message in enumerate(messages, start=1):
         if message["role"] in ["system", "user"]:
             text = template[message["role"]].format(message["content"])
@@ -225,7 +175,7 @@ def role_message(messages, tokenizer, template):
     return dict(input=torch.tensor(input[:-1]), label=torch.tensor(label[1:]))
 
 
-def chatml_message(messages, tokenizer, processor):
+def chatml_message(messages, tokenizer, **kwargs):
     return role_message(messages, tokenizer, chatml_role)
 
 
@@ -235,7 +185,6 @@ def chatml_message(messages, tokenizer, processor):
 #   "rejected": "xx"
 # }
 def role_preference(data, tokenizer, template):
-    assert data["context"][-1]["role"] != "assistant"
     assistant_start_ids = tokenizer.encode(
         template["assistant_start"], add_special_tokens=False, max_length=int(1e12), truncation=True
     )
@@ -268,61 +217,24 @@ def role_preference(data, tokenizer, template):
     }
 
 
-def chatml_preference(data, tokenizer, processor):
+def chatml_preference(data, tokenizer, **kwargs):
     return role_preference(data, tokenizer, chatml_role)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-# --------MMLLM----------
+# for MM LLM
 
 qwen2_system = "You are a helpful assistant."
 
-def qwen2_vl_message(messages, tokenizer, processor, file_path, **kwargs):
-    template = chatml_role
-    messages, images = message_trans(messages, file_path)
+
+def chatml_qwen2_vl_message(messages, tokenizer, processor, path, **kwargs):
+    messages, images = translate_messages(messages, path)
+    mm_inputs = None
     if len(images) > 0:
-        messages, mm_inputs = process_messages(messages,images,processor)
-    if not isinstance(messages, list) or not isinstance(messages[0], dict):
-        raise ValueError("messages should be [{'role': 'xxx', 'content': 'xxx'}, ...]," + f" but got {messages}")
+        messages, mm_inputs = process_messages(messages, images, processor)
 
-    assert messages[-1]["role"] == "assistant", "messages[-1]['role'] should be 'assistant'"
-    assert messages[-2]["role"] == "user", "messages[-2]['role'] should be 'user'"
+    msg = role_message(messages, tokenizer, chatml_role, context=chatml_role["system"].format(qwen2_system))
+    if mm_inputs is not None:
+        msg.update(mm_inputs)
 
-    assistant_start_ids = tokenizer.encode(
-        template["assistant_start"], add_special_tokens=False, max_length=int(1e12),truncation=True
-    )
-    input, label, context = [], [], template["system"].format(qwen2_system)
-    # all_tempalte = ''
-    for i, message in enumerate(messages, start=1):
-        if message["role"] in ["user"]:
-            text = template[message["role"]].format(message["content"])
-            context = text if context is None else template["join"].join([context, text])
-        elif message["role"] == "assistant":
-            # only tokenize and append context right before assistant message
-            # context after assistant message is not useful
-            context = template["join"].join([context, template["assistant_start"]])
-            #ids = tokenizer.encode(context, add_special_tokens=False, max_length=int(1e12), trucation=True)
-            # all_tempalte += context
-            ids = tokenizer.encode(context, add_special_tokens=False, max_length=int(1e12),truncation=True)
-            input.extend(ids)
-
-            label.extend([IGNORE_INDEX] * len(ids))
-
-            ids = tokenizer.encode(
-                template["assistant_start"] + message["content"] + template["assistant_end"],
-                add_special_tokens=False,
-                max_length=int(1e12),truncation=True
-            )
-            # all_tempalte += (message["content"] + template["assistant_end"])
-            # a hack to avoid prepending space in the assistant response
-            assert ids[: len(assistant_start_ids)] == assistant_start_ids
-            input.extend(ids[len(assistant_start_ids) :])
-            label.extend(ids[len(assistant_start_ids) :])
-            context = ""
-        else:
-            raise ValueError(f"not supported role: {message['role']}")
-    
-    # return dict(input=torch.tensor(input[:-1]), label=torch.tensor(label[1:]))
-    feature = dict(input=torch.tensor(input[:-1]), label=torch.tensor(label[1:]))
-    feature.update(mm_inputs)
-    return feature
+    return msg
