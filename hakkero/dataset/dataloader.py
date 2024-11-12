@@ -101,6 +101,10 @@ class PadLoaderBase(Loader):
 
         self.input_ids = []
         self.labels = []
+        
+        self.pixel_values = []
+        self.image_grid_thw = []
+        
         self.lengths = []
         self.n_targets = []
         self.task_ids = []
@@ -137,6 +141,11 @@ class PadLoader(PadLoaderBase):
 
         self.input_ids.append(sample["input"])
         self.labels.append(sample["label"])
+        if "pixel_values" in sample:
+            self.pixel_values.extend(sample["pixel_values"])
+        if "image_grid_thw" in sample:
+            self.image_grid_thw.extend(sample["image_grid_thw"])
+        
         self.lengths.append(sample["length"])
         self.n_targets.append(sample["n_target"])
 
@@ -155,6 +164,10 @@ class PadLoader(PadLoaderBase):
             batch["task_ids"] = torch.stack(
                 [torch.full((batch["input_ids"].shape[-1],), task, dtype=torch.long) for task in self.task_ids], dim=0
             )
+            if self.pixel_values:
+                batch["pixel_values"] = torch.stack(self.pixel_values, dim=0)
+            if self.image_grid_thw:
+                batch["image_grid_thw"] = torch.stack(self.image_grid_thw, dim=0)
         else:
             batch["input_ids"] = torch.cat(self.input_ids, dim=0).unsqueeze(0)
             batch["labels"] = torch.cat(self.labels, dim=0).unsqueeze(0)
@@ -165,12 +178,18 @@ class PadLoader(PadLoaderBase):
             batch["task_ids"] = torch.cat(
                 [torch.full((l,), t, dtype=torch.long) for t, l in zip(self.task_ids, self.lengths)], dim=0
             )
+            if self.pixel_values:
+                batch["pixel_values"] = torch.stack(self.pixel_values, dim=0)
+            if self.image_grid_thw:
+                batch["image_grid_thw"] = torch.stack(self.image_grid_thw, dim=0)
 
         self.failed = []
         self.useds = []
         self.task_ids = []
         self.input_ids = []
         self.labels = []
+        self.pixel_values = []
+        self.image_grid_thw = []
         self.lengths = []
         self.n_targets = []
 
@@ -269,6 +288,7 @@ class UnpadLoaderBase(Loader):
         self.lengths = []
         self.input_ids = []
         self.labels = []
+        
         self.n_targets = []
         self.task_ids = []
 
@@ -373,7 +393,6 @@ class UnpadLoader(UnpadLoaderBase):
         self.n_targets.append(sample["n_target"])
         self.input_ids.append(sample["input"])
         self.labels.append(sample["label"])
-
         self.total_length += sample["length"]
 
     def pop(self):

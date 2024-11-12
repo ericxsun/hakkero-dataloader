@@ -7,4 +7,4 @@ from hakkero.dataset.dataloader import PreferencePadLoader
 from hakkero.dataset.dataloader import PreferenceUnpadLoader
 from hakkero.dataset.dataloader import UnpadLoader
 from hakkero.dataset.mixed_dataset import get_dataset
-from hakkero.dataset.utils import IGNORE_INDEX
+from hakkero.dataset.utils import IGNORE_INDEX, process_messages

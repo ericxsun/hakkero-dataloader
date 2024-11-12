@@ -13,6 +13,16 @@ from hakkero.dataset.errors import SegmentationError
 def integrous(data, max_length, info, r: random.Random = None):
     """normal way: discard sample that is too long, exceed max_length"""
     # pretrain & sft
+    
+    ##for mllm model
+    if "pixel_values" in data and "image_grid_thw" in data:
+        length = data["input"].nelement()
+        assert length == data["label"].nelement()
+        if length > max_length:
+            raise SegmentationError(f"input length {length} > {max_length}")
+
+        return [dict(input=data["input"], label=data["label"], pixel_values = data["pixel_values"], image_grid_thw = data["image_grid_thw"], used=[info])]
+    
     if "input" in data:
         length = data["input"].nelement()
         assert length == data["label"].nelement()

@@ -169,6 +169,41 @@ See [segmentation.py](./hakkero/dataset/segmentation.py) and [tokenization.py](.
     ```
 
     See func `chatml_message` in [tokenization.py](./hakkero/dataset/tokenization.py) for more details.
+- `chatml_vl`: chat message vl data, use chatml to encode the input.
+  - format of input data
+    ```json
+    {
+      "uid": "xx",
+      "data": [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "image",
+                    "image": "images/2.jpg"
+                },
+                {
+                    "type": "text",
+                    "text": "他是谁？"
+                }
+            ]
+        },
+        {
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "他是来自拜仁慕尼黑的托马斯·穆勒。"
+                }
+            ]
+        },
+         ...
+      ]
+    }
+    ```
+
+    See func `qwen2_vl_message` in [tokenization.py](./hakkero/dataset/tokenization.py) for more details.
+    "chatml_vl" only support "integrous" segmentation strategies
 
 - `hg_preference`: preference data, use `tokenizer.apply_chat_template` to encode the input.
   - format of input data

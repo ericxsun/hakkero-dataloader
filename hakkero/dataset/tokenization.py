@@ -3,10 +3,9 @@
 #
 
 import torch
-
 from hakkero.dataset.errors import TokenizationError
-from hakkero.dataset.utils import IGNORE_INDEX
-
+from hakkero.dataset.utils import IGNORE_INDEX, process_messages
+from hakkero.dataset.utils import message_trans
 
 def check_legacy(data):
     if not isinstance(data, dict):
@@ -101,7 +100,7 @@ def legacy(data, tokenizer, **kwargs):
 
 # ----------------------------------------------------------------------------------------------------------------------
 # messages = [{"role": "user", "content": xxx}, {"role": "assistant", "content": xxx}, ...]
-def huggingface_message(messages, tokenizer, **kwargs):
+def huggingface_message(messages, tokenizer, processor, **kwargs):
     if not isinstance(messages, list) or not isinstance(messages[0], dict):
         raise ValueError("messages should be [{'role': 'xxx', 'content': 'xxx'}, ...]," + f" but got {messages}")
 
@@ -133,7 +132,7 @@ def huggingface_message(messages, tokenizer, **kwargs):
 #   "chosen": "xx",
 #   "rejected": "xx"
 # }
-def huggingface_preference(data, tokenizer, **kwargs):
+def huggingface_preference(data, tokenizer, processor, **kwargs):
     assert hasattr(tokenizer, "apply_chat_template")
     assert data["context"][-1]["role"] == "user", "data['context'][-1]['role'] should be 'user'"
 
@@ -226,7 +225,7 @@ def role_message(messages, tokenizer, template):
     return dict(input=torch.tensor(input[:-1]), label=torch.tensor(label[1:]))
 
 
-def chatml_message(messages, tokenizer):
+def chatml_message(messages, tokenizer, processor):
     return role_message(messages, tokenizer, chatml_role)
 
 
@@ -269,5 +268,61 @@ def role_preference(data, tokenizer, template):
     }
 
 
-def chatml_preference(data, tokenizer):
+def chatml_preference(data, tokenizer, processor):
     return role_preference(data, tokenizer, chatml_role)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# --------MMLLM----------
+
+qwen2_system = "You are a helpful assistant."
+
+def qwen2_vl_message(messages, tokenizer, processor, file_path, **kwargs):
+    template = chatml_role
+    messages, images = message_trans(messages, file_path)
+    if len(images) > 0:
+        messages, mm_inputs = process_messages(messages,images,processor)
+    if not isinstance(messages, list) or not isinstance(messages[0], dict):
+        raise ValueError("messages should be [{'role': 'xxx', 'content': 'xxx'}, ...]," + f" but got {messages}")
+
+    assert messages[-1]["role"] == "assistant", "messages[-1]['role'] should be 'assistant'"
+    assert messages[-2]["role"] == "user", "messages[-2]['role'] should be 'user'"
+
+    assistant_start_ids = tokenizer.encode(
+        template["assistant_start"], add_special_tokens=False, max_length=int(1e12),truncation=True
+    )
+    input, label, context = [], [], template["system"].format(qwen2_system)
+    # all_tempalte = ''
+    for i, message in enumerate(messages, start=1):
+        if message["role"] in ["user"]:
+            text = template[message["role"]].format(message["content"])
+            context = text if context is None else template["join"].join([context, text])
+        elif message["role"] == "assistant":
+            # only tokenize and append context right before assistant message
+            # context after assistant message is not useful
+            context = template["join"].join([context, template["assistant_start"]])
+            #ids = tokenizer.encode(context, add_special_tokens=False, max_length=int(1e12), trucation=True)
+            # all_tempalte += context
+            ids = tokenizer.encode(context, add_special_tokens=False, max_length=int(1e12),truncation=True)
+            input.extend(ids)
+
+            label.extend([IGNORE_INDEX] * len(ids))
+
+            ids = tokenizer.encode(
+                template["assistant_start"] + message["content"] + template["assistant_end"],
+                add_special_tokens=False,
+                max_length=int(1e12),truncation=True
+            )
+            # all_tempalte += (message["content"] + template["assistant_end"])
+            # a hack to avoid prepending space in the assistant response
+            assert ids[: len(assistant_start_ids)] == assistant_start_ids
+            input.extend(ids[len(assistant_start_ids) :])
+            label.extend(ids[len(assistant_start_ids) :])
+            context = ""
+        else:
+            raise ValueError(f"not supported role: {message['role']}")
+    
+    # return dict(input=torch.tensor(input[:-1]), label=torch.tensor(label[1:]))
+    feature = dict(input=torch.tensor(input[:-1]), label=torch.tensor(label[1:]))
+    feature.update(mm_inputs)
+    return feature

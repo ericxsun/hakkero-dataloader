@@ -10,6 +10,7 @@ from hakkero.dataset.tokenization import chatml_message
 from hakkero.dataset.tokenization import chatml_preference
 from hakkero.dataset.tokenization import huggingface_message
 from hakkero.dataset.tokenization import huggingface_preference
+from hakkero.dataset.tokenization import qwen2_vl_message
 from hakkero.dataset.tokenization import legacy
 
 ST_INTEGROUS = "integrous"
@@ -30,6 +31,7 @@ ST_HG = "hg"
 ST_HG_PREFERENCE = "hg_preference"
 ST_CHATML = "chatml"
 ST_CHATML_PREFERENCE = "chatml_preference"
+ST_CHATML_QWEN_VL = "chatml_vl"
 
 tokenize = {
     ST_LEGACY: legacy,
@@ -37,6 +39,7 @@ tokenize = {
     ST_HG_PREFERENCE: huggingface_preference,
     ST_CHATML: chatml_message,
     ST_CHATML_PREFERENCE: chatml_preference,
+    ST_CHATML_QWEN_VL: qwen2_vl_message
 }
 
 

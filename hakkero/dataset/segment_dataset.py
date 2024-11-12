@@ -28,6 +28,7 @@ class SegmentDataset(torch.utils.data.IterableDataset):
         path,
         name=None,
         tokenizer=None,
+        processor=None,
         prefetcher=None,
         seed=-1,
         infinite=False,
@@ -64,6 +65,7 @@ class SegmentDataset(torch.utils.data.IterableDataset):
         self.strategy = default_strategy if strategy is None else strategy
 
         self.tokenizer = tokenizer
+        self.processor = processor
         self.max_length = max_length
 
         self.prev = None
@@ -79,7 +81,11 @@ class SegmentDataset(torch.utils.data.IterableDataset):
             return [dict(used=[sample["info"]])]
 
         try:
-            data = strategy_tokenize[self.strategy[ST_TOKENIZE]](sample["data"], self.tokenizer, **self.kwargs)
+            if self.processor:
+                data = strategy_tokenize[self.strategy[ST_TOKENIZE]](sample["data"], self.tokenizer, self.processor, self.path, **self.kwargs)
+            else:
+                data = strategy_tokenize[self.strategy[ST_TOKENIZE]](sample["data"], self.tokenizer, self.processor, **self.kwargs)
+
         except TokenizationError as e:
             logger.warning(f"[{self.path}:{sample['info'][1]}]: {e}\n{sample['data']}")
             return [dict(used=[sample["info"]])]

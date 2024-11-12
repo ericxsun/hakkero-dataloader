@@ -5,12 +5,23 @@
 import itertools
 import math
 import random
+import os
 
 import numpy as np
 from scipy.stats import qmc
-
+from PIL import Image
+from copy import deepcopy
+from io import BytesIO
+from PIL.Image import Image as ImageObject
+from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple, TypedDict, Union
 # Specifies a target value that is ignored and does not contribute to the input gradient
 # see torch.nn.functional.cross_entropy
+class EncodedImage(TypedDict):
+    path: Optional[str]
+    bytes: Optional[bytes]
+ImageInput = Union[str, EncodedImage, ImageObject]
+IMAGE_PLACEHOLDER = "<image>"
+qwen2_image_token="<|image_pad|>"
 IGNORE_INDEX = -100
 
 
@@ -163,3 +174,130 @@ def format_size(size_bytes):
     p = math.pow(1024, i)
     s = round(size_bytes / p, 2)
     return f"{s}{names[i]}"
+
+
+##---------MMLLM-----------
+def _preprocess_image(image: "ImageObject",  **kwargs) -> "ImageObject":
+        image_resolution: int = kwargs.get("image_resolution")
+        if max(image.width, image.height) > image_resolution:
+            resize_factor = image_resolution / max(image.width, image.height)
+            width, height = int(image.width * resize_factor), int(image.height * resize_factor)
+            image = image.resize((width, height), resample=Image.NEAREST)
+
+        if image.mode != "RGB":
+            image = image.convert("RGB")
+        if min(image.width, image.height) < 28:
+            width, height = max(image.width, 28), max(image.height, 28)
+            image = image.resize((width, height), resample=Image.NEAREST)
+
+        if image.width / image.height > 200:
+            width, height = image.height * 180, image.height
+            image = image.resize((width, height), resample=Image.NEAREST)
+
+        if image.height / image.width > 200:
+            width, height = image.width, image.width * 180
+            image = image.resize((width, height), resample=Image.NEAREST)
+
+        return image
+
+def _regularize_images(images,  **kwargs) -> List["ImageObject"]:
+        r"""
+        Regularizes images to avoid error. Including reading and pre-processing.
+        """
+        results = []
+        for image in images:
+            if isinstance(image, str):
+                image = Image.open(image)
+            elif isinstance(image, dict):
+                if image["bytes"] is not None:
+                    image = Image.open(BytesIO(image["bytes"]))
+                else:
+                    image = Image.open(image["path"])
+
+            if not isinstance(image, ImageObject):
+                raise ValueError("Expect input is a list of Images, but got {}.".format(type(image)))
+
+            results.append(_preprocess_image(image,  **kwargs))
+
+        return results
+
+def _get_mm_inputs(images, processor):
+    # image_processor: "BaseImageProcessor" = getattr(processor, "image_processor")
+    # video_processor: "BaseImageProcessor" = getattr(processor, "video_processor", image_processor)
+    image_processor = getattr(processor, "image_processor")
+    video_processor = getattr(processor, "video_processor", image_processor)
+    input_dict = {"images": None}  # default key
+    if len(images) != 0:
+        images = _regularize_images(
+            images,
+            image_resolution=getattr(processor, "image_resolution", 512),
+            )
+        input_dict["images"] = images
+
+    mm_inputs = {}
+    if input_dict.get("images") is not None:
+        mm_inputs.update(image_processor(input_dict["images"], return_tensors="pt"))
+
+    if input_dict.get("videos") is not None:
+        mm_inputs.update(video_processor(input_dict["videos"], return_tensors="pt"))
+
+    return mm_inputs
+
+def message_trans(messages, base_path):
+    res_messages = []
+    images = []
+    for i, message in enumerate(messages):
+        role = message["role"]
+        contents = message["content"]
+        txt = ""
+        for content in contents:
+            if content["type"] == "image":
+                img_path = os.path.join(base_path, content["image"])
+                images.append(img_path)
+                txt += "<image>"
+            elif content["type"] == "text":
+                txt += content["text"]
+            else:
+                NotImplemented
+        res_messages.append(
+            {
+                "role": role,
+                "content": txt
+            }
+            )
+    return res_messages, images
+
+def process_messages(
+        messages: Sequence[Dict[str, str]],
+        images: Sequence["ImageInput"],
+        processor,
+    ) -> List[Dict[str, str]]:
+        
+        image_processor = getattr(processor, "image_processor")
+        merge_length = getattr(image_processor, "merge_size") ** 2
+        mm_inputs = _get_mm_inputs(images, processor)
+        image_grid_thw = mm_inputs.get("image_grid_thw", [])
+
+        num_image_tokens = 0
+        messages = deepcopy(messages)
+        for message in messages:
+            content = message["content"]
+            while IMAGE_PLACEHOLDER in content:
+                if num_image_tokens >= len(image_grid_thw):
+                    raise ValueError("`len(images)` is less than the number of {} tokens.".format(IMAGE_PLACEHOLDER))
+
+                content = content.replace(
+                    IMAGE_PLACEHOLDER,
+                    "<|vision_start|>{}<|vision_end|>".format(
+                        qwen2_image_token * (image_grid_thw[num_image_tokens].prod() // merge_length)
+                    ),
+                    1,
+                )
+                num_image_tokens += 1
+
+            message["content"] = content
+
+        if len(images) != num_image_tokens:
+            raise ValueError("The number of images does not match the number of {} tokens".format(IMAGE_PLACEHOLDER))
+
+        return messages, mm_inputs
