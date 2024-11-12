@@ -8,15 +8,15 @@ import random
 import numpy as np
 import torch.utils.data
 
-from hakkero.dataset.errors import SegmentationError
-from hakkero.dataset.errors import TokenizationError
 from hakkero.dataset.iterable_dataset import IterableDataset
 from hakkero.dataset.logger import logger
 from hakkero.dataset.strategy import default_strategy
 from hakkero.dataset.strategy import segment as strategy_segment
+from hakkero.dataset.strategy import SegmentationError
 from hakkero.dataset.strategy import ST_CONCAT
 from hakkero.dataset.strategy import ST_SEGMENT
 from hakkero.dataset.strategy import ST_TOKENIZE
+from hakkero.dataset.strategy import TokenizationError
 from hakkero.dataset.strategy import tokenize as strategy_tokenize
 from hakkero.dataset.utils import MultinomialSampler
 from hakkero.dataset.utils import RunningAverage
@@ -28,7 +28,6 @@ class SegmentDataset(torch.utils.data.IterableDataset):
         path,
         name=None,
         tokenizer=None,
-        processor=None,
         prefetcher=None,
         seed=-1,
         infinite=False,
@@ -65,7 +64,7 @@ class SegmentDataset(torch.utils.data.IterableDataset):
         self.strategy = default_strategy if strategy is None else strategy
 
         self.tokenizer = tokenizer
-        self.processor = processor
+        self.processor = kwargs.pop("processor", None)
         self.max_length = max_length
 
         self.prev = None
@@ -81,11 +80,9 @@ class SegmentDataset(torch.utils.data.IterableDataset):
             return [dict(used=[sample["info"]])]
 
         try:
-            if self.processor:
-                data = strategy_tokenize[self.strategy[ST_TOKENIZE]](sample["data"], self.tokenizer, self.processor, self.path, **self.kwargs)
-            else:
-                data = strategy_tokenize[self.strategy[ST_TOKENIZE]](sample["data"], self.tokenizer, self.processor, **self.kwargs)
-
+            data = strategy_tokenize[self.strategy[ST_TOKENIZE]](
+                sample["data"], self.tokenizer, processor=self.processor, path=self.path, **self.kwargs
+            )
         except TokenizationError as e:
             logger.warning(f"[{self.path}:{sample['info'][1]}]: {e}\n{sample['data']}")
             return [dict(used=[sample["info"]])]

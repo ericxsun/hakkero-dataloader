@@ -394,6 +394,7 @@ class IterableDataset(IndexedDataset, torch.utils.data.IterableDataset):
             if data:
                 sample["data"] = data["data"]
                 sample["uid"] = data["uid"]
+
             yield sample
 
     def next(self, block=False):

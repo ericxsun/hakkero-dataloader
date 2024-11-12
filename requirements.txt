@@ -6,5 +6,4 @@ tabulate
 scipy
 msgspec
 msgpack>=0.5.2
-pandas
 Pillow

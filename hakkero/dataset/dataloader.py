@@ -101,10 +101,10 @@ class PadLoaderBase(Loader):
 
         self.input_ids = []
         self.labels = []
-        
+
         self.pixel_values = []
         self.image_grid_thw = []
-        
+
         self.lengths = []
         self.n_targets = []
         self.task_ids = []
@@ -145,7 +145,7 @@ class PadLoader(PadLoaderBase):
             self.pixel_values.extend(sample["pixel_values"])
         if "image_grid_thw" in sample:
             self.image_grid_thw.extend(sample["image_grid_thw"])
-        
+
         self.lengths.append(sample["length"])
         self.n_targets.append(sample["n_target"])
 
@@ -179,9 +179,9 @@ class PadLoader(PadLoaderBase):
                 [torch.full((l,), t, dtype=torch.long) for t, l in zip(self.task_ids, self.lengths)], dim=0
             )
             if self.pixel_values:
-                batch["pixel_values"] = torch.stack(self.pixel_values, dim=0)
+                batch["pixel_values"] = torch.cat(self.pixel_values, dim=0)
             if self.image_grid_thw:
-                batch["image_grid_thw"] = torch.stack(self.image_grid_thw, dim=0)
+                batch["image_grid_thw"] = torch.cat(self.image_grid_thw, dim=0)
 
         self.failed = []
         self.useds = []
@@ -288,7 +288,7 @@ class UnpadLoaderBase(Loader):
         self.lengths = []
         self.input_ids = []
         self.labels = []
-        
+
         self.n_targets = []
         self.task_ids = []
 
