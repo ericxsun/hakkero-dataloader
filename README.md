@@ -102,7 +102,7 @@ example of `config`:
 
 ## 2. Supported Strategies
 
-See [segmentation.py](./hakkero/dataset/segmentation.py) and [tokenization.py](./hakkero/dataset/tokenization.py) for more details.
+See [segmentation.py](./hakkero/dataset/strategy/segmentation.py) and [tokenization.py](./hakkero/dataset/strategy/tokenization.py) for more details.
 
 ### 2.1 Segmentation Strategies
 
@@ -137,7 +137,7 @@ See [segmentation.py](./hakkero/dataset/segmentation.py) and [tokenization.py](.
 
     - All fields except `label` are stripped and joined with "\n\n" as the context.
     - `label` is the target to learn for finetuning (pretrain data should not have the `label` field).
-    - See func `legacy` in [tokenization.py](./hakkero/dataset/tokenization.py) for more details.
+    - See func `legacy` in [tokenization.py](./hakkero/dataset/strategy/tokenization.py) for more details.
   - extra parameters: `add_bos_token`, `add_eos_token`
 
 - `hg`: huggingface message data, use `tokenizer.apply_chat_template` to encode the input.
@@ -153,7 +153,7 @@ See [segmentation.py](./hakkero/dataset/segmentation.py) and [tokenization.py](.
     }
     ```
 
-    See func `huggingface_message` in [tokenization.py](./hakkero/dataset/tokenization.py) for more details.
+    See func `huggingface_message` in [tokenization.py](./hakkero/dataset/strategy/tokenization.py) for more details.
 
 - `chatml`: chat message data, use chatml to encode the input.
   - format of input data
@@ -168,8 +168,8 @@ See [segmentation.py](./hakkero/dataset/segmentation.py) and [tokenization.py](.
     }
     ```
 
-    See func `chatml_message` in [tokenization.py](./hakkero/dataset/tokenization.py) for more details.
-- `chatml_vl`: chat message vl data, use chatml to encode the input.
+    See func `chatml_message` in [tokenization.py](./hakkero/dataset/strategy/tokenization.py) for more details.
+- `chatml_qwen2_vl_message`: chat message vl data, use chatml to encode the input.
   - format of input data
     ```json
     {
@@ -202,8 +202,8 @@ See [segmentation.py](./hakkero/dataset/segmentation.py) and [tokenization.py](.
     }
     ```
 
-    See func `qwen2_vl_message` in [tokenization.py](./hakkero/dataset/tokenization.py) for more details.
-    "chatml_vl" only support "integrous" segmentation strategies
+    See func `chatml_qwen2_vl_message` in [tokenization.py](./hakkero/dataset/strategy/tokenization.py) for more details.
+    Only support "integrous" segmentation strategies
 
 - `hg_preference`: preference data, use `tokenizer.apply_chat_template` to encode the input.
   - format of input data
@@ -223,7 +223,7 @@ See [segmentation.py](./hakkero/dataset/segmentation.py) and [tokenization.py](.
     }
     ```
     
-    See func `huggingface_preference` in [tokenization.py](./hakkero/dataset/tokenization.py) for more details.
+    See func `huggingface_preference` in [tokenization.py](./hakkero/dataset/strategy/tokenization.py) for more details.
 
 - `chatml_preference`: preference data, use chatml to encode the input.
   - format of input data
@@ -243,4 +243,4 @@ See [segmentation.py](./hakkero/dataset/segmentation.py) and [tokenization.py](.
     }
     ```
     
-    See func `chatml_preference` in [tokenization.py](./hakkero/dataset/tokenization.py) for more details.
+    See func `chatml_preference` in [tokenization.py](./hakkero/dataset/strategy/tokenization.py) for more details.
