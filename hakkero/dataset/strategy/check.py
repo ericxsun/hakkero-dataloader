@@ -42,3 +42,10 @@ def check_preference(data):
         return False, "chosen or rejected should be string"
 
     return check_message(data["context"])
+
+
+check_func = {
+    "legacy": check_legacy,
+    "message": check_message,
+    "preference": check_preference,
+}

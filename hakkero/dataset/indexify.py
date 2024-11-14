@@ -13,12 +13,10 @@ import h5py
 
 from hakkero import __version__
 from hakkero.dataset.logger import logger
-from hakkero.dataset.strategy.check import check_legacy
-from hakkero.dataset.strategy.check import check_message
-from hakkero.dataset.strategy.check import check_preference
+from hakkero.dataset.strategy.check import check_func
 
 
-def _build_chunk_offsets(filename, start, end, worker_id, n_workers):
+def _build_chunk_offsets(filename, start, end, worker_id, n_workers, dtype="legacy"):
     offset = start
     bounds = []
     with open(filename, "rb") as fin:
@@ -41,15 +39,11 @@ def _build_chunk_offsets(filename, start, end, worker_id, n_workers):
                 _ = js["uid"]
                 data = js["data"]
 
-                valid_legacy, _ = check_legacy(data)
-                valid_message, _ = check_message(data)
-                valid_preference, _ = check_preference(data)
-
-                if valid_legacy or valid_message or valid_preference:
+                status, msg = check_func[dtype](data)
+                if status:
                     continue
                 else:
-                    logger.error(f"invalid format line: {line}")
-                    raise ValueError("invalid format")
+                    raise ValueError(f"\ndata: {line}\nerror: {msg}")
             except Exception as e:
                 logger.error(f"invalid format line: {line}\n{e}")
                 raise e
@@ -57,7 +51,7 @@ def _build_chunk_offsets(filename, start, end, worker_id, n_workers):
     return bounds
 
 
-def build_index(filename, output=None, num_workers=None):
+def build_index(filename, output=None, num_workers=None, dtype="legacy"):
     if num_workers is None:
         num_workers = mp.cpu_count()
 
@@ -68,8 +62,8 @@ def build_index(filename, output=None, num_workers=None):
 
     pool = mp.Pool(processes=num_workers)
 
-    chunks = [(i * chunk_size, (i + 1) * chunk_size, i + 1, num_workers) for i in range(num_workers)]
-    chunks[-1] = (chunks[-1][0], file_size, chunks[-1][2], num_workers)
+    chunks = [(i * chunk_size, (i + 1) * chunk_size, i + 1, num_workers, dtype) for i in range(num_workers)]
+    chunks[-1] = (chunks[-1][0], file_size, chunks[-1][2], num_workers, dtype)
 
     func = partial(_build_chunk_offsets, filename)
     results = pool.starmap(func, chunks)
@@ -106,11 +100,12 @@ def main():
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("--filename", type=str, help="full filename of jsonl file")
     parser.add_argument("--output", type=str, help="output path for saving data.jsonl and index.h5")
+    parser.add_argument("--dtype", type=str, choices=list(check_func.keys()), help="data type", required=True)
     parser.add_argument("--num_workers", type=int, default=None, help="number of workers")
 
     args = parser.parse_args()
 
-    build_index(args.filename, args.output, args.num_workers)
+    build_index(args.filename, args.output, args.num_workers, args.dtype)
 
 
 if __name__ == "__main__":
