@@ -12,14 +12,20 @@ Install `pip install hakkero-dataloader` and run the following command to build 
 
 ```shell
 hakkero -h
-usage: hakkero [-h] --filename FILENAME [--output OUTPUT]
+
+usage: hakkero [-h] [--version] [--filename FILENAME] [--output OUTPUT] --dtype {legacy,message,preference} [--num_workers NUM_WORKERS]
 
 build index for dataset
 
-options:
-  -h, --help           show this help message and exit
-  --filename FILENAME  full filename of jsonl file
-  --output OUTPUT      output path for saving data.jsonl and index.h5
+optional arguments:
+  -h, --help            show this help message and exit
+  --version             show program's version number and exit
+  --filename FILENAME   full filename of jsonl file
+  --output OUTPUT       output path for saving data.jsonl and index.h5
+  --dtype {legacy,message,preference}
+                        data type
+  --num_workers NUM_WORKERS
+                        number of workers
 ```
 
 ### 1.2 Use In Training
