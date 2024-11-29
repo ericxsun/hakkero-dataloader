@@ -7,6 +7,7 @@ import json
 import multiprocessing as mp
 import os
 import shutil
+import time
 from functools import partial
 
 import h5py
@@ -51,7 +52,34 @@ def _build_chunk_offsets(filename, start, end, worker_id, n_workers, dtype="lega
     return bounds
 
 
-def build_index(filename, output=None, num_workers=None, dtype="legacy"):
+def build_index(filename, output=None, num_workers=None, dtype="legacy", shuf=True):
+    if dtype not in list(check_func.keys()):
+        raise ValueError(f"dtype must be one of {list(check_func.keys())}")
+
+    if shuf:
+        from hakkero.lib import turboshuf
+
+        logger.info("shuf before building index")
+        st = time.time()
+        try:
+            logger.info(f"[shuf] mv {filename} => {filename}.tmp")
+            shutil.move(filename, f"{filename}.tmp")
+
+            logger.info(f"[shuf] shuf {filename}.tmp => {filename}")
+            turboshuf(f"{filename}.tmp", filename)
+
+            logger.info(f"[shuf] rm {filename}.tmp")
+            os.remove(f"{filename}.tmp")
+        except Exception as e:
+            logger.error(f"[shuf] shuf failed: {e}\nfail back...not shuf...")
+            try:
+                shutil.move(f"{filename}.tmp", filename)
+            except Exception:
+                pass
+
+        es = time.time()
+        logger.info(f"[shuf] shuf cost: {es - st}(sec)")
+
     if num_workers is None:
         num_workers = mp.cpu_count()
 
@@ -102,10 +130,11 @@ def main():
     parser.add_argument("--output", type=str, help="output path for saving data.jsonl and index.h5")
     parser.add_argument("--dtype", type=str, choices=list(check_func.keys()), help="data type", required=True)
     parser.add_argument("--num_workers", type=int, default=None, help="number of workers")
+    parser.add_argument("--not_shuf", action="store_true", help="not shuf data")
 
     args = parser.parse_args()
 
-    build_index(args.filename, args.output, args.num_workers, args.dtype)
+    build_index(args.filename, args.output, args.num_workers, args.dtype, not args.not_shuf)
 
 
 if __name__ == "__main__":

@@ -13,7 +13,7 @@ Install `pip install hakkero-dataloader` and run the following command to build 
 ```shell
 hakkero -h
 
-usage: hakkero [-h] [--version] [--filename FILENAME] [--output OUTPUT] --dtype {legacy,message,preference} [--num_workers NUM_WORKERS]
+usage: hakkero [-h] [--version] [--filename FILENAME] [--output OUTPUT] --dtype {legacy,message,preference} [--num_workers NUM_WORKERS] [--not_shuf]
 
 build index for dataset
 
@@ -26,6 +26,7 @@ optional arguments:
                         data type
   --num_workers NUM_WORKERS
                         number of workers
+  --not_shuf            not shuf data
 ```
 
 ### 1.2 Use In Training
