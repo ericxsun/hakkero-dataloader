@@ -65,7 +65,8 @@ class MixedDataset(torch.utils.data.IterableDataset):
                 weight = None
             else:
                 path = sub_config["path"]
-                n_epoch = sub_config["epoch"] * self.num_epochs if self.num_epochs > 0 else sub_config["epoch"]
+                sub_config_epoch = int(sub_config.get("epoch", 1))
+                n_epoch = sub_config_epoch * self.num_epochs if self.num_epochs > 0 else sub_config_epoch
                 strategy = sub_config.get("strategy", {})
 
                 if ST_SEGMENT not in strategy:
