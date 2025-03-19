@@ -74,9 +74,22 @@ def huggingface_message(messages, tokenizer, **kwargs):
     context_ids = tokenizer.apply_chat_template(messages[:-1], add_generation_prompt=True)
 
     # hack: separate encoding of the context and response will always lead to prefix space in the response
-    response_ids_with_prefix = tokenizer.apply_chat_template(messages[-2:], add_generation_prompt=False)
-    prefix_ids = tokenizer.apply_chat_template(messages[-2:-1], add_generation_prompt=True)
-    response_ids = response_ids_with_prefix[len(prefix_ids) :]
+    # response_ids_with_prefix = tokenizer.apply_chat_template(messages[-2:], add_generation_prompt=False)
+    # prefix_ids = tokenizer.apply_chat_template(messages[-2:-1], add_generation_prompt=True)
+    # assert response_ids_with_prefix[:len(prefix_ids)] == prefix_ids
+    # response_ids = response_ids_with_prefix[len(prefix_ids) :]
+
+    text_response_ids_with_prefix = tokenizer.apply_chat_template(messages[-2:], add_generation_prompt=False, tokenize=False)
+    text_prefix_ids = tokenizer.apply_chat_template(messages[-2:-1], add_generation_prompt=True, tokenize=False)
+    assert text_response_ids_with_prefix[: len(text_prefix_ids)] == text_prefix_ids
+    response_ids = tokenizer(
+        text_response_ids_with_prefix[len(text_prefix_ids):],
+        padding=False,
+        truncation=False,
+        max_length=None,
+        add_special_tokens=False,
+        return_tensors=None
+    )["input_ids"]
 
     input = context_ids + response_ids
     label = [IGNORE_INDEX for _ in context_ids] + response_ids
@@ -85,7 +98,12 @@ def huggingface_message(messages, tokenizer, **kwargs):
 
 
 # data = {
-#   "context": [{"role": "user", "content": xxx}, {"role": "assistant", "content": xxx}, ...],
+#   "context": [
+#       {"role": "user", "content": xxx},
+#       {"role": "assistant", "content": xxx},
+#       ...
+#       {"role": "user", "content": xxx}
+#   ],
 #   "chosen": "xx",
 #   "rejected": "xx"
 # }
@@ -101,7 +119,7 @@ def huggingface_preference(data, tokenizer, **kwargs):
     context_ids = tokenizer.apply_chat_template(data["context"], add_generation_prompt=True)
 
     # hack: separate encoding of the context and response will always lead to prefix space in the response
-    prefix_ids = tokenizer.apply_chat_template(data["context"][-1:], add_generation_prompt=True)
+    text_prefix_ids = tokenizer.apply_chat_template(data["context"][-1:], add_generation_prompt=True, tokenize=False)
 
     inputs = dict(chosen=[], rejected=[])
     labels = dict(chosen=[], rejected=[])
@@ -109,13 +127,23 @@ def huggingface_preference(data, tokenizer, **kwargs):
     for key in ("chosen", "rejected"):
         inputs[key].extend(context_ids)
         labels[key].extend(IGNORE_INDEX for _ in context_ids)
-        response_ids_with_prefix = tokenizer.apply_chat_template(
-            data["context"][-1:] + [{"role": "assistant", "content": data[key]}], add_generation_prompt=False
+
+        text_response_ids_with_prefix = tokenizer.apply_chat_template(
+            data["context"][-1:] + [{"role": "assistant", "content": data[key]}],
+            add_generation_prompt=False,
+            tokenize=False
         )
 
-        assert response_ids_with_prefix[: len(prefix_ids)] == prefix_ids
+        assert text_response_ids_with_prefix[: len(text_prefix_ids)] == text_prefix_ids
 
-        response_ids = response_ids_with_prefix[len(prefix_ids) :]
+        response_ids = tokenizer(
+            text_response_ids_with_prefix[len(text_prefix_ids):],
+            padding=False,
+            truncation=False,
+            max_length=None,
+            add_special_tokens=False,
+            return_tensors=None
+        )["input_ids"]
 
         inputs[key].extend(response_ids)
         labels[key].extend(response_ids)

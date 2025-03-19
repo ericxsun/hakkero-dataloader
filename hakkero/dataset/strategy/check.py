@@ -54,9 +54,29 @@ def check_preference(data):
         return False, f"messages should be {FMT_PREFERENCES}, but got {data}"
 
     if not isinstance(data["chosen"], str) or not isinstance(data["rejected"], str):
-        return False, "chosen or rejected should be string"
+        return False, f"chosen or rejected should be string, but got {data}"
 
-    return check_message(data["context"])
+    # check context
+    context = data["context"]
+    if len(context) == 0:
+        return False, f"context should not be empty, but got {data}"
+
+    if not isinstance(context, list) or not all(isinstance(d, dict) for d in context):
+        return False, f"context should be {FMT_MESSAGES}, but got {data}"
+
+    if context[0]["role"] not in ("system", "user"):
+        return False, f"context[0]['role'] should be 'system' or 'user', but got {context[0]['role']}"
+
+    if context[-1]["role"] != "user":
+        return False, f"context[-1]['role'] should be 'user', but got {context[-1]['role']}"
+
+    if context[0]["role"] == "system" and (len(context[1:]) + 1) % 2 != 0:
+        return False, f"context should be in pairs between user and assistant, but got {data}"
+
+    if any([len(d["content"]) == 0 for d in context]):
+        return False, f"message in context should not be empty, but some of them are empty. see {data}"
+
+    return True, ""
 
 
 check_func = {
