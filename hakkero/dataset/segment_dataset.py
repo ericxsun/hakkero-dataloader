@@ -84,7 +84,9 @@ class SegmentDataset(torch.utils.data.IterableDataset):
                 sample["data"], self.tokenizer, processor=self.processor, path=self.path, **self.kwargs
             )
         except TokenizationError as e:
-            logger.warning(f"[rank={self.rank}, world_size={self.world_size}][{self.path}:{sample['info'][1]}]: {e} => {sample['uid']}\n{sample['data']}")
+            logger.warning(
+                f"[rank={self.rank}, world_size={self.world_size}][{self.path}:{sample['info'][1]}]: {e} => {sample['uid']}\n{sample['data']}"
+            )
             return [dict(used=[sample["info"]])]
 
         try:
@@ -100,7 +102,9 @@ class SegmentDataset(torch.utils.data.IterableDataset):
                     data, self.max_length, sample["info"], self.random
                 )
         except SegmentationError as e:
-            logger.warning(f"[rank={self.rank}, world_size={self.world_size}][{self.path}:{sample['info'][1]}]: {e} => {sample['uid']}")
+            logger.warning(
+                f"[rank={self.rank}, world_size={self.world_size}][{self.path}:{sample['info'][1]}]: {e} => {sample['uid']}"
+            )
             return [dict(used=[sample["info"]])]
 
         for s in segments:
