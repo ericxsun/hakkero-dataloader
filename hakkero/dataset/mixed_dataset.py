@@ -9,6 +9,8 @@ from tabulate import tabulate
 from hakkero.dataset.iterable_dataset import Prefetcher
 from hakkero.dataset.segment_dataset import MixedSegmentDataset
 from hakkero.dataset.strategy import default_strategy
+from hakkero.dataset.strategy import ST_HG
+from hakkero.dataset.strategy import ST_HG_PREFERENCE
 from hakkero.dataset.strategy import ST_SEGMENT
 from hakkero.dataset.strategy import ST_TOKENIZE
 from hakkero.dataset.utils import MultinomialSampler
@@ -76,6 +78,15 @@ class MixedDataset(torch.utils.data.IterableDataset):
                     strategy[ST_TOKENIZE] = strategy_tokenize
 
                 weight = sub_config.get("weight", None)
+
+            if strategy[ST_TOKENIZE] in {ST_HG, ST_HG_PREFERENCE}:
+                assert hasattr(tokenizer, "apply_chat_template"), "tokenizer should have apply_chat_template"
+
+                assert tokenizer.apply_chat_template(
+                    [{"role": "user", "content": "test"}], add_generation_prompt=True
+                ) != tokenizer.apply_chat_template(
+                    [{"role": "user", "content": "test"}], add_generation_prompt=False
+                ), "add_generation_prompt does not take effect, please modify tokenizer.chat_template"
 
             dataset = MixedSegmentDataset(
                 path,
