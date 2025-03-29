@@ -73,33 +73,41 @@ def remove_ignore(content, ignore):
 # ----------------------------------------------------------------------------------------------------------------------
 # messages = [{"role": "user", "content": xxx}, {"role": "assistant", "content": xxx}, ...]
 def huggingface_message(messages, tokenizer, **kwargs):
-    assert hasattr(tokenizer, "apply_chat_template"), "tokenizer should have apply_chat_template"
+    input, label = [], []
 
-    assert tokenizer.apply_chat_template(
-        [{"role": "user", "content": "test"}], add_generation_prompt=True
-    ) != tokenizer.apply_chat_template(
-        [{"role": "user", "content": "test"}], add_generation_prompt=False
-    ), "add_generation_prompt does not take effect, please modify tokenizer.chat_template"
+    st_token_ignore = kwargs.pop("st_token_ignore", None)
 
-    context_ids = tokenizer.apply_chat_template(messages[:-1], add_generation_prompt=True)
+    uid = next((i for i, v in enumerate(messages) if v["role"] == "user"), -1)
 
-    text_response_ids_with_prefix = tokenizer.apply_chat_template(
-        messages[-2:], add_generation_prompt=False, tokenize=False
-    )
-    text_prefix_ids = tokenizer.apply_chat_template(messages[-2:-1], add_generation_prompt=True, tokenize=False)
-    text_prefix_ids = remove_ignore(text_prefix_ids, kwargs.pop("st_token_ignore", None))
-    assert text_response_ids_with_prefix[: len(text_prefix_ids)] == text_prefix_ids
-    response_ids = tokenizer(
-        text_response_ids_with_prefix[len(text_prefix_ids) :],
-        padding=False,
-        truncation=False,
-        max_length=None,
-        add_special_tokens=False,
-        return_tensors=None,
-    )["input_ids"]
+    while uid < len(messages):
+        aid = uid + 1
 
-    input = context_ids + response_ids
-    label = [IGNORE_INDEX for _ in context_ids] + response_ids
+        cur_context_ids = tokenizer.apply_chat_template(messages[:aid], add_generation_prompt=True)
+
+        cur_text_resp_ids_with_prefix = tokenizer.apply_chat_template(
+            messages[: aid + 1], add_generation_prompt=False, tokenize=False
+        )
+        cur_text_prefix_ids = tokenizer.apply_chat_template(messages[:aid], add_generation_prompt=True, tokenize=False)
+
+        cur_text_prefix_ids = remove_ignore(cur_text_prefix_ids, st_token_ignore)
+        assert cur_text_resp_ids_with_prefix[: len(cur_text_prefix_ids)] == cur_text_prefix_ids
+
+        cur_resp_ids = tokenizer(
+            cur_text_resp_ids_with_prefix[len(cur_text_prefix_ids) :],
+            padding=False,
+            truncation=False,
+            max_length=None,
+            add_special_tokens=False,
+            return_tensors=None,
+        )["input_ids"]
+
+        cur_input = cur_context_ids + cur_resp_ids
+        cur_label = [IGNORE_INDEX for _ in cur_context_ids] + cur_resp_ids
+
+        input = input + cur_input[len(input) :]
+        label = label + cur_label[len(label) :]
+
+        uid += 2
 
     return dict(input=torch.tensor(input[:-1], dtype=torch.long), label=torch.tensor(label[1:], dtype=torch.long))
 
@@ -115,14 +123,6 @@ def huggingface_message(messages, tokenizer, **kwargs):
 #   "rejected": "xx"
 # }
 def huggingface_preference(data, tokenizer, **kwargs):
-    assert hasattr(tokenizer, "apply_chat_template")
-
-    assert tokenizer.apply_chat_template(
-        [{"role": "user", "content": "test"}], add_generation_prompt=True
-    ) != tokenizer.apply_chat_template(
-        [{"role": "user", "content": "test"}], add_generation_prompt=False
-    ), "add_generation_prompt does not take effect, please modify tokenizer.chat_template"
-
     context_ids = tokenizer.apply_chat_template(data["context"], add_generation_prompt=True)
 
     # hack: separate encoding of the context and response will always lead to prefix space in the response
