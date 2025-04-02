@@ -9,6 +9,7 @@ import torch
 from hakkero.dataset.image import process_messages
 from hakkero.dataset.image import translate_messages
 from hakkero.dataset.strategy.errors import TokenizationError
+from hakkero.dataset.strategy.keep_thinks import change_chat_template_with_keep_think_remap
 from hakkero.dataset.utils import IGNORE_INDEX
 
 
@@ -70,44 +71,80 @@ def remove_ignore(content, ignore):
     return re_ignore.split(content)[0]
 
 
+def _override_tokenizer(kwargs, tokenizer):
+    old_chat_template = tokenizer.chat_template
+    keep_think = kwargs.pop("keep_think", "no").lower()
+    new_chat_template, keep_think = change_chat_template_with_keep_think_remap(old_chat_template, keep_think)
+    tokenizer.chat_template = new_chat_template
+
+    return keep_think, tokenizer, old_chat_template
+
+
 # ----------------------------------------------------------------------------------------------------------------------
+# keep_think: no - not keep <think>xx</think>, last - keep <think>xx</think> in last turn, all - keep <think>xx</think> in all turns
+_tokenize_kwargs = {
+    "padding": False,
+    "truncation": False,
+    "max_length": None,
+    "add_special_tokens": False,
+    "return_tensors": None,
+}
+
+
+def _process_single_turn(uid, is_last_turn, messages, tokenizer, keep_think, **kwargs):
+    keep_think_in_context = keep_think == "all"
+    keep_think_in_resp = keep_think == "all" or (keep_think == "last" and is_last_turn)
+
+    aid = uid + 1
+
+    text_context_ids = tokenizer.apply_chat_template(
+        messages[:aid], add_generation_prompt=True, tokenize=False, keep_think=keep_think_in_context
+    )
+    text_context_ids = remove_ignore(text_context_ids, "<think>\n")
+    context_ids = tokenizer(text_context_ids, **_tokenize_kwargs)["input_ids"]
+
+    text_resp_ids_with_prefix = tokenizer.apply_chat_template(
+        messages[: aid + 1], add_generation_prompt=False, tokenize=False, keep_think=keep_think_in_resp
+    )
+
+    text_prefix_ids = tokenizer.apply_chat_template(
+        messages[:aid], add_generation_prompt=True, tokenize=False, keep_think=keep_think_in_resp
+    )
+    text_prefix_ids = remove_ignore(text_prefix_ids, "<think>\n")
+
+    assert text_resp_ids_with_prefix[: len(text_prefix_ids)] == text_prefix_ids
+
+    resp_ids = tokenizer(text_resp_ids_with_prefix[len(text_prefix_ids) :], **_tokenize_kwargs)["input_ids"]
+
+    cur_input = context_ids + resp_ids
+    cur_label = [IGNORE_INDEX for _ in context_ids] + resp_ids
+
+    return cur_input, cur_label
+
+
 # messages = [{"role": "user", "content": xxx}, {"role": "assistant", "content": xxx}, ...]
 def huggingface_message(messages, tokenizer, **kwargs):
+    keep_think, tokenizer, old_chat_template = _override_tokenizer(kwargs, tokenizer)
+
+    n_turns = int((len(messages) if messages[0]["role"] == "user" else len(messages) - 1) / 2)
+
     input, label = [], []
 
-    st_token_ignore = kwargs.pop("st_token_ignore", None)
-
     uid = next((i for i, v in enumerate(messages) if v["role"] == "user"), -1)
+    cur_turn = 1
 
     while uid < len(messages):
-        aid = uid + 1
+        is_last_turn = cur_turn == n_turns
 
-        cur_context_ids = tokenizer.apply_chat_template(messages[:aid], add_generation_prompt=True)
-
-        cur_text_resp_ids_with_prefix = tokenizer.apply_chat_template(
-            messages[: aid + 1], add_generation_prompt=False, tokenize=False
-        )
-        cur_text_prefix_ids = tokenizer.apply_chat_template(messages[:aid], add_generation_prompt=True, tokenize=False)
-
-        cur_text_prefix_ids = remove_ignore(cur_text_prefix_ids, st_token_ignore)
-        assert cur_text_resp_ids_with_prefix[: len(cur_text_prefix_ids)] == cur_text_prefix_ids
-
-        cur_resp_ids = tokenizer(
-            cur_text_resp_ids_with_prefix[len(cur_text_prefix_ids) :],
-            padding=False,
-            truncation=False,
-            max_length=None,
-            add_special_tokens=False,
-            return_tensors=None,
-        )["input_ids"]
-
-        cur_input = cur_context_ids + cur_resp_ids
-        cur_label = [IGNORE_INDEX for _ in cur_context_ids] + cur_resp_ids
+        cur_input, cur_label = _process_single_turn(uid, is_last_turn, messages, tokenizer, keep_think, **kwargs)
 
         input = input + cur_input[len(input) :]
         label = label + cur_label[len(label) :]
 
         uid += 2
+        cur_turn += 1
+
+    tokenizer.chat_template = old_chat_template
 
     return dict(input=torch.tensor(input[:-1], dtype=torch.long), label=torch.tensor(label[1:], dtype=torch.long))
 
@@ -123,11 +160,21 @@ def huggingface_message(messages, tokenizer, **kwargs):
 #   "rejected": "xx"
 # }
 def huggingface_preference(data, tokenizer, **kwargs):
-    context_ids = tokenizer.apply_chat_template(data["context"], add_generation_prompt=True)
+    keep_think, tokenizer, old_chat_template = _override_tokenizer(kwargs, tokenizer)
 
-    # hack: separate encoding of the context and response will always lead to prefix space in the response
-    text_prefix_ids = tokenizer.apply_chat_template(data["context"][-1:], add_generation_prompt=True, tokenize=False)
-    text_prefix_ids = remove_ignore(text_prefix_ids, kwargs.pop("st_token_ignore", None))
+    keep_think_in_context = keep_think == "all"
+    keep_think_in_resp = keep_think == "all" or keep_think == "last"  # keep think in chosen/rejected
+
+    text_context_ids = tokenizer.apply_chat_template(
+        data["context"], add_generation_prompt=True, tokenize=False, keep_think=keep_think_in_context
+    )
+    text_context_ids = remove_ignore(text_context_ids, "<think>\n")
+    context_ids = tokenizer(text_context_ids, **_tokenize_kwargs)["input_ids"]
+
+    text_prefix_ids = tokenizer.apply_chat_template(
+        data["context"][-1:], add_generation_prompt=True, tokenize=False, keep_think=keep_think_in_resp
+    )
+    text_prefix_ids = remove_ignore(text_prefix_ids, "<think>\n")
 
     inputs = dict(chosen=[], rejected=[])
     labels = dict(chosen=[], rejected=[])
@@ -140,21 +187,17 @@ def huggingface_preference(data, tokenizer, **kwargs):
             data["context"][-1:] + [{"role": "assistant", "content": data[key]}],
             add_generation_prompt=False,
             tokenize=False,
+            keep_think=keep_think_in_resp,
         )
 
         assert text_response_ids_with_prefix[: len(text_prefix_ids)] == text_prefix_ids
 
-        response_ids = tokenizer(
-            text_response_ids_with_prefix[len(text_prefix_ids) :],
-            padding=False,
-            truncation=False,
-            max_length=None,
-            add_special_tokens=False,
-            return_tensors=None,
-        )["input_ids"]
+        response_ids = tokenizer(text_response_ids_with_prefix[len(text_prefix_ids) :], **_tokenize_kwargs)["input_ids"]
 
         inputs[key].extend(response_ids)
         labels[key].extend(response_ids)
+
+    tokenizer.chat_template = old_chat_template
 
     return {
         "inputs": {key: torch.tensor(value[:-1]) for key, value in inputs.items()},

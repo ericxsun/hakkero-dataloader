@@ -32,15 +32,7 @@ optional arguments:
 ### 1.2 Use In Training
 
 ```python
-from hakkero.dataset import get_dataset
-
-# pretrain or sft
-from hakkero.dataset import PadLoader
-from hakkero.dataset import UnpadLoader
-
-# preference
-from hakkero.dataset import PreferencePadLoader
-from hakkero.dataset import PreferenceUnpadLoader
+from hakkero.dataset import get_data
 
 dp_world_size, dp_rank = 1, 0
 tokenizer = ...
@@ -48,16 +40,13 @@ batch_size = 4
 max_length = 4096
 n_workers = 2
 
-dataset = get_dataset(
-    config="/path/to/dataset",
+dataset, dataloader, forward_keys = get_data(
+    config="/path/to/dataset config",
+    dp_rank=dp_rank,
+    dp_world_size=dp_world_size,
     tokenizer=tokenizer,
-    num_epochs=-1,
+    batch_size=batch_size,
     max_length=max_length,
-    homogeneous=True,
-    seed=9527,
-    rank=dp_rank,
-    world_size=dp_world_size,
-    n_workers=n_workers,
     # segment and tokenize strategy or set them in `config` and let strategy_segment=None and strategy_tokenize=None: 
     st_segment="naive",
     st_tokenize="legacy",
@@ -66,13 +55,22 @@ dataset = get_dataset(
     add_eos_token=True,
     # norm dataset weight with tokens of target
     norm_weight_with_n_targets=False,
+    # keep <think>xxx</think> in message or not
+    # no - not keep <think>xx</think> (default)
+    # last - keep <think>xx</think> in last turn
+    # all - keep <think>xx</think> in all turns
+    keep_think="no",
+    homogeneous=True,
+    seed=9527,
+    n_workers=n_workers,
+    is_preference=False,
+    use_unpad_data=False,
+    use_unpad_in_pad=False,
 )
 
-dataloader = UnpadLoader(dataset, max_total_length=batch_size * max_length)
-prefetcher = dataloader.prefetch(n_workers)
-
+prefetcher = dataloader.prefetch(n_workers, drop_last=False)
 for step, batch in enumerate(prefetcher, start=0):
-    print(batch)
+  print(batch)
 ```
 
 example of `config`: 
@@ -145,7 +143,8 @@ See [segmentation.py](./hakkero/dataset/strategy/segmentation.py) and [tokenizat
     - All fields except `label` are stripped and joined with "\n\n" as the context.
     - `label` is the target to learn for finetuning (pretrain data should not have the `label` field).
     - See func `legacy` in [tokenization.py](./hakkero/dataset/strategy/tokenization.py) for more details.
-  - extra parameters: `add_bos_token`, `add_eos_token`
+  - extra parameters:
+    - `add_bos_token`, `add_eos_token`
 
 - `hg`: huggingface message data, use `tokenizer.apply_chat_template` to encode the input.
   - format of input data
@@ -161,6 +160,11 @@ See [segmentation.py](./hakkero/dataset/strategy/segmentation.py) and [tokenizat
     ```
 
     See func `huggingface_message` in [tokenization.py](./hakkero/dataset/strategy/tokenization.py) for more details.
+  - extra parameters:
+    - `keep_think`: support keep `<think>xx</think>` or not
+      - `no` - not keep `<think>xx</think>` (default)
+      - `last` - keep `<think>xx</think>` in last turn
+      - `all` - keep `<think>xx</think>` in all turns
 
 - `chatml`: chat message data, use chatml to encode the input.
   - format of input data
@@ -231,6 +235,11 @@ See [segmentation.py](./hakkero/dataset/strategy/segmentation.py) and [tokenizat
     ```
     
     See func `huggingface_preference` in [tokenization.py](./hakkero/dataset/strategy/tokenization.py) for more details.
+  - extra parameters:
+    - `keep_think`: support keep `<think>xx</think>` or not
+      - `no` - not keep `<think>xx</think>` (default)
+      - `last` - keep `<think>xx</think>` in last turn
+      - `all` - keep `<think>xx</think>` in all turns
 
 - `chatml_preference`: preference data, use chatml to encode the input.
   - format of input data
